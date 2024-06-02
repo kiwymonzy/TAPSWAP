@@ -2,6 +2,8 @@
 #include <QNetworkRequest>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
+#include <QDateTime>
 #include <QDebug>
 
 ApiRequester::ApiRequester(QObject *parent) : QObject(parent), manager(new QNetworkAccessManager(this)) {
@@ -32,7 +34,7 @@ void ApiRequester::sendRequest() {
     request.setRawHeader("Accept", "*/*");
 
     QJsonObject json;
-    json["taps"] = 1;
+    json["taps"] = 3;
     json["time"] = 1717235953601;
 
     QNetworkReply *reply = manager->post(request, QJsonDocument(json).toJson());
@@ -44,7 +46,24 @@ void ApiRequester::sendRequest() {
 void ApiRequester::onReplyFinished(QNetworkReply *reply) {
     if (reply->error() == QNetworkReply::NoError) {
         QByteArray response = reply->readAll();
-        qDebug() << "Response:" << response;
+
+        // Parse the JSON response
+        QJsonParseError parseError;
+        QJsonDocument jsonResponse = QJsonDocument::fromJson(response, &parseError);
+
+        if (parseError.error == QJsonParseError::NoError && jsonResponse.isObject()) {
+            QJsonObject jsonObject = jsonResponse.object();
+            if (jsonObject.contains("player") && jsonObject["player"].isObject()) {
+                QJsonObject playerObject = jsonObject["player"].toObject();
+                if (playerObject.contains("shares")) {
+                    int shares = playerObject["shares"].toInt();
+                    QString currentTime = QDateTime::currentDateTime().toString(Qt::ISODate);
+                    qDebug() << "Current Time:" << currentTime << "Shares:" << shares;
+                }
+            }
+        } else {
+            qDebug() << "JSON Parse Error:" << parseError.errorString();
+        }
     } else {
         qDebug() << "Error:" << reply->errorString();
     }
@@ -54,4 +73,3 @@ void ApiRequester::onReplyFinished(QNetworkReply *reply) {
 void ApiRequester::onErrorOccurred(QNetworkReply::NetworkError error) {
     qDebug() << "Network Error:" << error;
 }
-
