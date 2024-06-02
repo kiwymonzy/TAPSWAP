@@ -1,16 +1,18 @@
-#include "apirequester.h"
-#include <QNetworkRequest>
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonParseError>
-#include <QDateTime>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QTimer>
 #include <QDebug>
+#include <QThread>
+#include "apirequester.h"
 
 ApiRequester::ApiRequester(QObject *parent) : QObject(parent), manager(new QNetworkAccessManager(this)) {
-    connect(manager, &QNetworkAccessManager::finished, this, &ApiRequester::onReplyFinished);
-    timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, &ApiRequester::sendRequest);
-    timer->start(1000); // 1000 milliseconds = 1 second
+    // Set up the periodic request
+    connect(&timer, &QTimer::timeout, this, &ApiRequester::sendRequest);
+    timer.start(1000); // every 1 second
 }
 
 void ApiRequester::sendRequest() {
@@ -24,7 +26,7 @@ void ApiRequester::sendRequest() {
     request.setRawHeader("Sec-Fetch-Site", "cross-site");
     request.setRawHeader("Origin", "https://app.tapswap.club");
     request.setRawHeader("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148");
-    request.setRawHeader("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjE0NTc3Njg5MzIsImlhdCI6MTcxNzM0MjQwNCwiZXhwIjoxNzE3MzQ2MDA0fQ.bANkLAOios8OK6M15f6phTEZg4HIzYJQyDp1LTm3N7A");
+    request.setRawHeader("Authorization", bearerToken.toUtf8());
     request.setRawHeader("Sec-Fetch-Mode", "cors");
     request.setRawHeader("x-bot", "no");
     request.setRawHeader("Host", "api.tapswap.ai");
@@ -38,16 +40,15 @@ void ApiRequester::sendRequest() {
     json["time"] = 1717235953601;
 
     QNetworkReply *reply = manager->post(request, QJsonDocument(json).toJson());
-
-    // Optional: handle errors for individual requests
-    connect(reply, &QNetworkReply::errorOccurred, this, &ApiRequester::onErrorOccurred);
+    connect(reply, &QNetworkReply::finished, this, &ApiRequester::onReplyFinished);
 }
 
-void ApiRequester::onReplyFinished(QNetworkReply *reply) {
+void ApiRequester::onReplyFinished() {
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+
     if (reply->error() == QNetworkReply::NoError) {
         QByteArray response = reply->readAll();
-
-        // Parse the JSON response
         QJsonParseError parseError;
         QJsonDocument jsonResponse = QJsonDocument::fromJson(response, &parseError);
 
@@ -60,6 +61,66 @@ void ApiRequester::onReplyFinished(QNetworkReply *reply) {
                     QString currentTime = QDateTime::currentDateTime().toString(Qt::ISODate);
                     qDebug() << "Current Time:" << currentTime << "Shares:" << shares;
                 }
+                if (playerObject.contains("energy")) {
+                    int energy = playerObject["energy"].toInt();
+                    if (energy < 100) {
+                        QThread::sleep(30);
+                    }
+                }
+            }
+        } else {
+            qDebug() << "JSON Parse Error:" << parseError.errorString();
+        }
+    } else {
+        qDebug() << "Error:" << reply->errorString();
+        handleLogin();
+    }
+    reply->deleteLater();
+}
+
+void ApiRequester::handleLogin() {
+    QNetworkRequest request(QUrl("https://api.tapswap.ai/api/account/login"));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("x-cv", "608");
+    request.setRawHeader("Sec-Fetch-Dest", "empty");
+    request.setRawHeader("Connection", "keep-alive");
+    request.setRawHeader("Accept-Encoding", "gzip, deflate, br");
+    request.setRawHeader("Sec-Fetch-Site", "cross-site");
+    request.setRawHeader("Origin", "https://app.tapswap.club");
+    request.setRawHeader("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148");
+    request.setRawHeader("Sec-Fetch-Mode", "cors");
+    request.setRawHeader("x-bot", "no");
+    request.setRawHeader("Host", "api.tapswap.ai");
+    request.setRawHeader("x-app", "tapswap_server");
+    request.setRawHeader("Referer", "https://app.tapswap.club/");
+    request.setRawHeader("Accept-Language", "en-GB,en;q=0.9");
+    request.setRawHeader("Accept", "*/*");
+
+    QJsonObject json;
+    json["init_data"] = "query_id=AAHkyeNWAAAAAOTJ41YgMPFD&user=%7B%22id%22%3A1457768932%2C%22first_name%22%3A%22%C3%97%CD%9C%C3%972.0kiwy%22%2C%22last_name%22%3A%22%22%2C%22username%22%3A%22kiwymonzy%22%2C%22language_code%22%3A%22en%22%2C%22allows_write_to_pm%22%3Atrue%7D&auth_date=1717235474&hash=c41a64b76c5ac983859ca4d974fbe4be3475e6a663dec94ec4df0b4012e8dbe4";
+    json["referrer"] = "";
+    json["bot_key"] = "app_bot_0";
+    json["chr"] = 214178;
+
+    QNetworkReply *reply = manager->post(request, QJsonDocument(json).toJson());
+    connect(reply, &QNetworkReply::finished, this, &ApiRequester::onLoginReplyFinished);
+}
+
+void ApiRequester::onLoginReplyFinished() {
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+
+    if (reply->error() == QNetworkReply::NoError) {
+        QByteArray response = reply->readAll();
+        QJsonParseError parseError;
+        QJsonDocument jsonResponse = QJsonDocument::fromJson(response, &parseError);
+
+        if (parseError.error == QJsonParseError::NoError && jsonResponse.isObject()) {
+            QJsonObject jsonObject = jsonResponse.object();
+            if (jsonObject.contains("access_token")) {
+                QString accessToken = jsonObject["access_token"].toString();
+                bearerToken = "Bearer " + accessToken;
+                qDebug() << "New Access Token:" << bearerToken;
             }
         } else {
             qDebug() << "JSON Parse Error:" << parseError.errorString();
@@ -68,8 +129,4 @@ void ApiRequester::onReplyFinished(QNetworkReply *reply) {
         qDebug() << "Error:" << reply->errorString();
     }
     reply->deleteLater();
-}
-
-void ApiRequester::onErrorOccurred(QNetworkReply::NetworkError error) {
-    qDebug() << "Network Error:" << error;
 }

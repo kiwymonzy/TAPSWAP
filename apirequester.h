@@ -6,22 +6,23 @@
 #include <QNetworkReply>
 #include <QTimer>
 
-class ApiRequester : public QObject {
+class ApiRequester : public QObject
+{
     Q_OBJECT
-
 public:
-    ApiRequester(QObject *parent = nullptr);
+    explicit ApiRequester(QObject *parent = nullptr);
 
 public slots:
     void sendRequest();
-
-private slots:
-    void onReplyFinished(QNetworkReply *reply);
-    void onErrorOccurred(QNetworkReply::NetworkError error);
+    void onReplyFinished();
+    void onLoginReplyFinished();
 
 private:
+    void handleLogin();
+
     QNetworkAccessManager *manager;
-    QTimer *timer;
+    QTimer timer;
+    QString bearerToken;
 };
 
 #endif // APIREQUESTER_H
