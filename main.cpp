@@ -13,6 +13,9 @@ class ApiRequester : public QObject {
 public:
     ApiRequester(QObject *parent = nullptr) : QObject(parent), manager(new QNetworkAccessManager(this)) {
         connect(manager, &QNetworkAccessManager::finished, this, &ApiRequester::onReplyFinished);
+        timer = new QTimer(this);
+        connect(timer, &QTimer::timeout, this, &ApiRequester::sendRequest);
+        timer->start(1000); // 1000 milliseconds = 1 second
     }
 
     void sendRequest() {
@@ -62,15 +65,13 @@ private slots:
 
 private:
     QNetworkAccessManager *manager;
+    QTimer *timer;
 };
 
 int main(int argc, char *argv[]) {
     QCoreApplication a(argc, argv);
 
     ApiRequester requester;
-
-    // Send the request periodically or based on some trigger
-    requester.sendRequest();
 
     return a.exec();
 }
