@@ -34,7 +34,7 @@ void ApiRequester::sendRequest() {
     request.setRawHeader("Accept", "*/*");
 
     QJsonObject json;
-    json["taps"] = 3;
+    json["taps"] = 1;
     json["time"] = 1717235953601;
 
     QNetworkReply *reply = manager->post(request, QJsonDocument(json).toJson());
